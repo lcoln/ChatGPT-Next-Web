@@ -2,6 +2,39 @@ import { BuiltinMask } from "./typing";
 
 export const EN_MASKS: BuiltinMask[] = [
   {
+    avatar: "1f5bc-fe0f",
+    name: "Midjourney",
+    context: [
+      {
+        role: "system",
+        content: "You are a Midjourney ai robot.",
+        date: "",
+      },
+      {
+        role: "user",
+        content: "Can you use Midjourney to generate pictures for me?",
+        date: "",
+      },
+      {
+        role: "assistant",
+        content: "Of course, what picture do you want to generate",
+        date: "",
+      },
+    ],
+    modelConfig: {
+      model: "gpt-3.5-turbo",
+      temperature: 1,
+      max_tokens: 2000,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+      sendMemory: true,
+      historyMessageCount: 32,
+      compressMessageLengthThreshold: 1000,
+    },
+    lang: "cn",
+    builtin: true,
+  },
+  {
     avatar: "1f47e",
     name: "GitHub Copilot",
     context: [

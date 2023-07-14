@@ -42,6 +42,7 @@ export class ChatGPTApi implements LLMApi {
   }
 
   async chat(options: ChatOptions) {
+    console.log(8789);
     const messages = options.messages.map((v) => ({
       role: v.role,
       content: v.content,

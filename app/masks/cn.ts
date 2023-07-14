@@ -3,6 +3,35 @@ import { BuiltinMask } from "./typing";
 export const CN_MASKS: BuiltinMask[] = [
   {
     avatar: "1f5bc-fe0f",
+    name: "Midjourney",
+    context: [
+      {
+        role: "system",
+        content: "我是一个 Midjourney 机器人.",
+        date: "",
+      },
+      { role: "user", content: "你可以为我生成Midjourney图片吗?", date: "" },
+      {
+        role: "assistant",
+        content: "当然可以，你想要生成什么图片",
+        date: "",
+      },
+    ],
+    modelConfig: {
+      model: "gpt-3.5-turbo",
+      temperature: 1,
+      max_tokens: 2000,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+      sendMemory: true,
+      historyMessageCount: 32,
+      compressMessageLengthThreshold: 1000,
+    },
+    lang: "cn",
+    builtin: true,
+  },
+  {
+    avatar: "1f5bc-fe0f",
     name: "以文搜图",
     context: [
       {
