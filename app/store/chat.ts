@@ -314,7 +314,8 @@ export const useChatStore = create<ChatStore>()(
             botMessage,
           ]);
         });
-        // console.log({sendMessages})
+
+        console.log({ sendMessages, session }, get());
         // make request
         api.llm.chat({
           messages: sendMessages,
