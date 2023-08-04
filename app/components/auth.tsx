@@ -30,6 +30,7 @@ export function AuthPage() {
         value={access.accessCode}
         onChange={(e) => {
           access.updateCode(e.currentTarget.value);
+          access.updateUUID();
         }}
       />
 

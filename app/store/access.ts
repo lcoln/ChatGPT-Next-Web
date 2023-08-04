@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createUUID } from "@/app/utils/uuid";
 import { DEFAULT_API_HOST, StoreKey } from "../constant";
 import { getHeaders } from "../client/api";
 import { BOT_HELLO } from "./chat";
@@ -8,15 +9,20 @@ import { getClientConfig } from "../config/client";
 export interface AccessControlStore {
   accessCode: string;
   token: string;
+  uuid: string;
+  sessionId: string;
 
   needCode: boolean;
   hideUserApiKey: boolean;
   openaiUrl: string;
+  mjUrl: string;
   hideBalanceQuery: boolean;
 
   updateToken: (_: string) => void;
   updateCode: (_: string) => void;
   updateOpenAiUrl: (_: string) => void;
+  updateUUID: (_?: string) => void;
+  updateSessionId: (_: string) => void;
   enabledAccessControl: () => boolean;
   isAuthorized: () => boolean;
   fetch: () => void;
@@ -31,11 +37,14 @@ console.log("[API] default openai url", DEFAULT_OPENAI_URL);
 export const useAccessStore = create<AccessControlStore>()(
   persist(
     (set, get) => ({
+      uuid: "",
       token: "",
       accessCode: "",
+      sessionId: "",
       needCode: true,
       hideUserApiKey: false,
       openaiUrl: DEFAULT_OPENAI_URL,
+      mjUrl: "/api/mj/",
       hideBalanceQuery: false,
 
       enabledAccessControl() {
@@ -48,6 +57,18 @@ export const useAccessStore = create<AccessControlStore>()(
       },
       updateToken(token: string) {
         set(() => ({ token }));
+      },
+      updateUUID(uuid?: string) {
+        if (!get().uuid) {
+          createUUID().then((id) => {
+            set(() => ({ uuid: uuid || id }));
+          });
+        }
+      },
+      updateSessionId(ssid: string) {
+        if (ssid) {
+          set(() => ({ sessionId: ssid }));
+        }
       },
       updateOpenAiUrl(url: string) {
         set(() => ({ openaiUrl: url }));

@@ -2,6 +2,7 @@ import { getClientConfig } from "../config/client";
 import { ACCESS_CODE_PREFIX } from "../constant";
 import { ChatMessage, ModelType, useAccessStore } from "../store";
 import { ChatGPTApi } from "./platforms/openai";
+import { MJApi } from "./platforms/mj";
 
 export const ROLES = ["system", "user", "assistant"] as const;
 export type MessageRole = (typeof ROLES)[number];
@@ -28,9 +29,13 @@ export interface ChatOptions {
   config: LLMConfig;
 
   onUpdate?: (message: string, chunk: string) => void;
-  onFinish: (message: string) => void;
+  onFinish: (message: string | Record<string, any>) => void;
   onError?: (err: Error) => void;
   onController?: (controller: AbortController) => void;
+}
+
+export interface MJOptions extends ChatOptions {
+  onFinish: (message: any) => void;
 }
 
 export interface LLMUsage {
@@ -43,8 +48,45 @@ export interface LLMModel {
   available: boolean;
 }
 
+export interface IInteractionsParams {
+  applicationId?: string;
+  channelId?: string;
+  content?: string;
+  customId?: string;
+  guildId?: string;
+  messageId?: string;
+  index?: number;
+  upsample: Array<1 | 2 | 3 | 4 | null>;
+  variation: Array<1 | 2 | 3 | 4 | null>;
+  frontMessageId: number;
+  frontSessionId: number;
+  type: "upsample" | "variation";
+  parentId?: number;
+}
+
+type Override<P, S> = Omit<P, keyof S> & S;
+export type IMJActionsMessage = Override<
+  Omit<IInteractionsParams, "upsample" | "variation">,
+  {
+    id: number;
+    params: {
+      frontMessageId: number;
+      frontSessionId: number;
+      upsample: Array<1 | 2 | 3 | 4 | null>;
+      variation: Array<1 | 2 | 3 | 4 | null>;
+    };
+  }
+>;
+
 export abstract class LLMApi {
   abstract chat(options: ChatOptions): Promise<void>;
+  abstract usage(): Promise<LLMUsage>;
+  abstract models(): Promise<LLMModel[]>;
+}
+
+export abstract class CMJApi implements LLMApi {
+  abstract chat(options: MJOptions): Promise<void>;
+  abstract interactions(options: IInteractionsParams): Promise<void>;
   abstract usage(): Promise<LLMUsage>;
   abstract models(): Promise<LLMModel[]>;
 }
@@ -72,9 +114,11 @@ interface ChatProvider {
 
 export class ClientApi {
   public llm: LLMApi;
+  public mj: CMJApi;
 
   constructor() {
     this.llm = new ChatGPTApi();
+    this.mj = new MJApi();
   }
 
   config() {}
@@ -145,6 +189,9 @@ export function getHeaders() {
     headers.Authorization = makeBearer(
       ACCESS_CODE_PREFIX + accessStore.accessCode,
     );
+  }
+  if (validString(accessStore.uuid)) {
+    headers.uuid = accessStore.uuid;
   }
 
   return headers;

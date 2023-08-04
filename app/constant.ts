@@ -29,6 +29,7 @@ export enum FileName {
 
 export enum StoreKey {
   Chat = "chat-next-web-store",
+  MJ = "mj-next-web-store",
   Access = "access-control",
   Config = "app-config",
   Mask = "mask-store",
@@ -51,6 +52,8 @@ export const EXPORT_MESSAGE_CLASS_NAME = "export-markdown";
 
 export const OpenaiPath = {
   ChatPath: "v1/chat/completions",
+  MJPath: "v1/mj/completions",
+  MJInteractionsPath: "v1/mj/interactions",
   UsagePath: "dashboard/billing/usage",
   SubsPath: "dashboard/billing/subscription",
   ListModelPath: "v1/models",
@@ -126,6 +129,10 @@ export const DEFAULT_MODELS = [
   },
   {
     name: "chatglm", // chatglm-6b
+    available: false,
+  },
+  {
+    name: "midjourney", // midjourney
     available: false,
   },
 ] as const;

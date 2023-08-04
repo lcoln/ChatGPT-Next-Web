@@ -12,7 +12,7 @@ import {
   DEFAULT_SYSTEM_TEMPLATE,
   StoreKey,
 } from "../constant";
-import { api, RequestMessage } from "../client/api";
+import { api, RequestMessage, IInteractionsParams } from "../client/api";
 import { ChatControllerPool } from "../client/controller";
 import { prettyObject } from "../utils/format";
 import { estimateTokenLength } from "../utils/token";
@@ -23,6 +23,8 @@ export type ChatMessage = RequestMessage & {
   isError?: boolean;
   id?: number;
   model?: ModelType;
+  params?: IInteractionsParams;
+  parentId?: number;
 };
 
 export function createMessage(override: Partial<ChatMessage>): ChatMessage {
@@ -79,6 +81,8 @@ function createEmptySession(): ChatSession {
   };
 }
 
+export type BotMessageConfig = { id?: number; parentId?: number };
+
 interface ChatStore {
   sessions: ChatSession[];
   currentSessionIndex: number;
@@ -95,9 +99,15 @@ interface ChatStore {
   summarizeSession: () => void;
   updateStat: (message: ChatMessage) => void;
   updateCurrentSession: (updater: (session: ChatSession) => void) => void;
+  updateCurrentMessage: (content: string, params?: IInteractionsParams) => void;
   updateMessage: (
     sessionIndex: number,
     messageIndex: number,
+    updater: (message?: ChatMessage) => void,
+  ) => void;
+  updateMessageById: (
+    sessionId: number,
+    messageId: number,
     updater: (message?: ChatMessage) => void,
   ) => void;
   resetSession: () => void;
@@ -105,6 +115,14 @@ interface ChatStore {
   getMemoryPrompt: () => ChatMessage;
 
   clearAllData: () => void;
+
+  addBotMessage: (
+    ...args: [content: string, config?: BotMessageConfig]
+  ) => Promise<number>;
+}
+
+interface MJStore {
+  interactions: (params: IInteractionsParams) => void;
 }
 
 function countMessages(msgs: ChatMessage[]) {
@@ -315,11 +333,15 @@ export const useChatStore = create<ChatStore>()(
           ]);
         });
 
-        console.log({ sendMessages, session }, get());
+        // console.log({ sendMessages, session }, get());
         // make request
-        api.llm.chat({
+        const method = modelConfig.model === "midjourney" ? "mj" : "llm";
+        api[method].chat({
           messages: sendMessages,
-          config: { ...modelConfig, stream: true },
+          config: {
+            ...modelConfig,
+            ...(modelConfig.model === "midjourney" ? {} : { stream: true }),
+          },
           onUpdate(message) {
             botMessage.streaming = true;
             if (message) {
@@ -331,10 +353,8 @@ export const useChatStore = create<ChatStore>()(
           },
           onFinish(message) {
             botMessage.streaming = false;
-            if (message) {
-              botMessage.content = message;
-              get().onNewMessage(botMessage);
-            }
+            botMessage.content = message;
+            get().onNewMessage(botMessage);
             ChatControllerPool.remove(
               sessionIndex,
               botMessage.id ?? messageIndex,
@@ -374,7 +394,6 @@ export const useChatStore = create<ChatStore>()(
 
       getMemoryPrompt() {
         const session = get().currentSession();
-
         return {
           role: "system",
           content:
@@ -478,8 +497,41 @@ export const useChatStore = create<ChatStore>()(
         const sessions = get().sessions;
         const session = sessions.at(sessionIndex);
         const messages = session?.messages;
+        // console.log({ sessions, sessionIndex, messages, messageIndex });
         updater(messages?.at(messageIndex));
         set(() => ({ sessions }));
+      },
+
+      updateMessageById(
+        sessionId: number,
+        messageId: number,
+        updater: (message?: ChatMessage) => void,
+      ) {
+        const sessions = get().sessions;
+        const session = sessions.filter((item) => item.id === sessionId)?.[0];
+        const messages = session?.messages;
+        console.log({ messages, messageId, sessionId, sessions, session });
+        updater(messages.filter((item) => item.id === messageId)?.[0]);
+        set(() => ({ sessions }));
+      },
+
+      addBotMessage(content, config) {
+        const session = get().currentSession();
+        const modelConfig = session.mask.modelConfig;
+
+        const botMessage: ChatMessage = createMessage({
+          role: "assistant",
+          model: modelConfig.model,
+          content: content,
+          ...config,
+        });
+        return new Promise((yes) => {
+          // save user's and bot's message
+          get().updateCurrentSession((session) => {
+            session.messages = session.messages.concat([botMessage]);
+            yes(botMessage.id || -1);
+          });
+        });
       },
 
       resetSession() {
@@ -516,7 +568,9 @@ export const useChatStore = create<ChatStore>()(
               get().updateCurrentSession(
                 (session) =>
                   (session.topic =
-                    message.length > 0 ? trimTopic(message) : DEFAULT_TOPIC),
+                    message.length > 0 && typeof message === "string"
+                      ? trimTopic(message)
+                      : DEFAULT_TOPIC),
               );
             },
           });
@@ -591,6 +645,21 @@ export const useChatStore = create<ChatStore>()(
         set(() => ({ sessions }));
       },
 
+      updateCurrentMessage(content, params) {
+        this.updateMessage(
+          get().currentSessionIndex,
+          get().currentSession().messages.length - 1,
+          (currmessage) => {
+            if (currmessage) {
+              currmessage.content = content;
+              if (params) {
+                currmessage.params = params;
+              }
+            }
+          },
+        );
+      },
+
       clearAllData() {
         localStorage.clear();
         location.reload();
@@ -621,6 +690,19 @@ export const useChatStore = create<ChatStore>()(
 
         return newState;
       },
+    },
+  ),
+);
+
+export const useMJStore = create<MJStore>()(
+  persist(
+    (_get) => ({
+      interactions(params) {
+        api.mj.interactions(params);
+      },
+    }),
+    {
+      name: StoreKey.MJ,
     },
   ),
 );

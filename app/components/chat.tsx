@@ -36,6 +36,7 @@ import {
   ChatMessage,
   SubmitKey,
   useChatStore,
+  useMJStore,
   BOT_HELLO,
   createMessage,
   useAccessStore,
@@ -43,6 +44,7 @@ import {
   useAppConfig,
   DEFAULT_TOPIC,
   ModelType,
+  BotMessageConfig,
 } from "../store";
 
 import {
@@ -51,6 +53,8 @@ import {
   autoGrowTextArea,
   useMobileScreen,
 } from "../utils";
+
+import { IInteractionsParams, IMJActionsMessage } from "../client/api";
 
 import dynamic from "next/dynamic";
 
@@ -78,6 +82,15 @@ import { ChatCommandPrefix, useChatCommand, useCommand } from "../command";
 import { prettyObject } from "../utils/format";
 import { ExportMessageModal } from "./exporter";
 import { getClientConfig } from "../config/client";
+type RenderMessage = ChatMessage & { preview?: boolean };
+
+type MJInteractions = (
+  ...args: [params: IInteractionsParams, config?: BotMessageConfig]
+) => void;
+type IMJAction = {
+  message: IMJActionsMessage;
+  onMJInteractions: MJInteractions;
+};
 
 const Markdown = dynamic(async () => (await import("./markdown")).Markdown, {
   loading: () => <LoadingIcon />,
@@ -313,7 +326,7 @@ function ClearContextDivider() {
 }
 
 function ChatAction(props: {
-  text: string;
+  text?: string;
   icon: JSX.Element;
   onClick: () => void;
 }) {
@@ -354,9 +367,11 @@ function ChatAction(props: {
       <div ref={iconRef} className={styles["icon"]}>
         {props.icon}
       </div>
-      <div className={styles["text"]} ref={textRef}>
-        {props.text}
-      </div>
+      {props.text && (
+        <div className={styles["text"]} ref={textRef}>
+          {props.text}
+        </div>
+      )}
     </div>
   );
 }
@@ -513,10 +528,48 @@ export function ChatActions(props: {
   );
 }
 
-export function Chat() {
-  type RenderMessage = ChatMessage & { preview?: boolean };
+function MJAction(props: IMJAction & { type: "upsample" | "variation" }) {
+  const { message, onMJInteractions, type } = props;
+  return message.params[type]?.map((v, i) => (
+    <ChatAction
+      key={Number(`${message.id}${v}`)}
+      icon={
+        <div className={v ? "" : styles["mj-action-selected"]}>
+          {type === "upsample" ? "U" : "V"}
+          {i + 1}
+        </div>
+      }
+      onClick={() => {
+        if (type === "variation") {
+          onMJInteractions(
+            { ...message.params, index: i + 1, type },
+            { parentId: message.id },
+          );
+        } else if (v) {
+          onMJInteractions(
+            { ...message.params, index: v, type },
+            { id: Number(`${message.id}${v}`), parentId: message.id },
+          );
+        }
+      }}
+    />
+  ));
+}
 
+function MJActions(props: IMJAction) {
+  return (
+    <>
+      <div style={{ width: 10 }}></div>
+      <MJAction {...props} type="upsample" />
+      <div style={{ width: 10 }}></div>
+      <MJAction {...props} type="variation" />
+    </>
+  );
+}
+
+export function Chat() {
   const chatStore = useChatStore();
+  const mjStore = useMJStore();
   const [session, sessionIndex] = useChatStore((state) => [
     state.currentSession(),
     state.currentSessionIndex,
@@ -534,6 +587,7 @@ export function Chat() {
   const [hitBottom, setHitBottom] = useState(true);
   const isMobileScreen = useMobileScreen();
   const navigate = useNavigate();
+  const currentModel = session.mask.modelConfig.model;
 
   const onChatBodyScroll = (e: HTMLElement) => {
     const isTouchBottom = e.scrollTop + e.clientHeight >= e.scrollHeight - 10;
@@ -729,6 +783,20 @@ export function Chat() {
     const userIndex = findLastUserIndex(botMessageId);
     if (userIndex === null) return;
     deleteMessage(userIndex);
+  };
+
+  const onMJInteractions: MJInteractions = async (params, config) => {
+    const id = await chatStore.addBotMessage(
+      params.type === "upsample"
+        ? "正在作图中，请稍候~"
+        : `基于图片${params.index}生成图片中，请稍候~`,
+      config,
+    );
+    await mjStore.interactions({
+      ...params,
+      ...config,
+      frontMessageId: id,
+    });
   };
 
   const onResend = (botMessageId: number) => {
@@ -932,6 +1000,10 @@ export function Chat() {
 
           const shouldShowClearContextDivider = i === clearContextIndex - 1;
 
+          const hasMJOptions =
+            message.params &&
+            ["variation", "imagine"].includes(message.params.type);
+
           return (
             <>
               <div
@@ -991,11 +1063,11 @@ export function Chat() {
                     />
 
                     {showActions && (
-                      <div className={styles["chat-message-actions"]}>
+                      <div className={styles[`chat-message-actions`]}>
                         <div
                           className={styles["chat-input-actions"]}
                           style={{
-                            marginTop: 10,
+                            marginTop: 20,
                             marginBottom: 0,
                           }}
                         >
@@ -1007,27 +1079,46 @@ export function Chat() {
                             />
                           ) : (
                             <>
-                              <ChatAction
-                                text={Locale.Chat.Actions.Retry}
-                                icon={<ResetIcon />}
-                                onClick={() => onResend(message.id ?? i)}
-                              />
-
-                              <ChatAction
-                                text={Locale.Chat.Actions.Delete}
-                                icon={<DeleteIcon />}
-                                onClick={() => onDelete(message.id ?? i)}
-                              />
-
-                              <ChatAction
-                                text={Locale.Chat.Actions.Pin}
-                                icon={<PinIcon />}
-                                onClick={() => onPinMessage(message)}
-                              />
+                              {message.params && (
+                                <ChatAction
+                                  text={Locale.Chat.Actions.Retry}
+                                  icon={<ResetIcon />}
+                                  onClick={() => onResend(message.id ?? i)}
+                                />
+                              )}
+                              {hasMJOptions ? (
+                                <MJActions
+                                  message={
+                                    message as unknown as IMJActionsMessage
+                                  }
+                                  onMJInteractions={onMJInteractions}
+                                />
+                              ) : (
+                                <>
+                                  <ChatAction
+                                    text={Locale.Chat.Actions.Delete}
+                                    icon={<DeleteIcon />}
+                                    onClick={() => onDelete(message.id ?? i)}
+                                  />
+                                  <ChatAction
+                                    text={Locale.Chat.Actions.Pin}
+                                    icon={<PinIcon />}
+                                    onClick={() => onPinMessage(message)}
+                                  />
+                                </>
+                              )}
                               <ChatAction
                                 text={Locale.Chat.Actions.Copy}
                                 icon={<CopyIcon />}
-                                onClick={() => copyToClipboard(message.content)}
+                                onClick={() => {
+                                  const content =
+                                    currentModel === "midjourney"
+                                      ? message.content.match(
+                                          /((https|http|ftp|rtsp|mms)?:\/\/)[^\s]+/,
+                                        )?.[0]
+                                      : message.content;
+                                  copyToClipboard(content || message.content);
+                                }}
                               />
                             </>
                           )}

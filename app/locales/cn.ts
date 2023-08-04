@@ -30,6 +30,10 @@ const cn = {
       PinToastAction: "查看",
       Delete: "删除",
       Edit: "编辑",
+      U1: "U1",
+      U2: "U2",
+      U3: "U3",
+      U4: "U4",
     },
     Commands: {
       new: "新建聊天",
